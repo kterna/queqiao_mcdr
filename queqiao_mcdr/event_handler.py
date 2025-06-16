@@ -198,13 +198,21 @@ class EventHandler:
     
     def create_base_event(self, post_type: str, sub_type: Optional[str] = None) -> Dict[str, Any]:
         """创建基础事件结构"""
+        # 根据sub_type生成event_name，格式为MCDR + 首字母大写的sub_type
+        event_name = ''
+        if sub_type:
+            if sub_type == 'player_command':
+                event_name = 'MCDRPlayer_command'
+            else:
+                event_name = f'MCDR{sub_type.capitalize()}'
+        
         return {
             'server_name': self.config.server_name,
             'server_version': self.get_server_version(),
             'server_type': self.config.server_type,
             'post_type': post_type,
             'sub_type': sub_type,
-            'event_name': ''
+            'event_name': event_name
         }
     
     def create_player_data(self, player_name: str, player_obj: Optional[Any] = None) -> Dict[str, Any]:
