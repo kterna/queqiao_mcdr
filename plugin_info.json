@@ -1,0 +1,17 @@
+{
+    "id": "queqiao_mcdr",
+    "authors": [{
+        "name": "kterna",
+        "link": "https://github.com/kterna"
+    }],
+    "repository": "https://github.com/kterna/QueQiao_MCDR",
+    "branch": "main",
+    "related_path": ".",
+    "labels": [
+        "tool",
+        "api"
+    ],
+    "introduction": {
+        "zh_cn": "README.md"
+    }
+}
