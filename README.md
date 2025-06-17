@@ -2,7 +2,7 @@
 
 ## 1. 插件介绍
 
-QueQiao MCDR是QueQiao mod的mcdr移植[https://github.com/17TheWord/QueQiao]，支持跨服务器的消息传递和事件处理。
+QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植，支持跨服务器的消息传递和事件处理。
 
 #### 配置项说明
 
@@ -32,28 +32,7 @@ QueQiao MCDR是QueQiao mod的mcdr移植[https://github.com/17TheWord/QueQiao]，
 
 ## 4. API 接口完整指南
 
-### 4.1 基础格式
-
-**请求格式：**
-```json
-{
-  "api": "API名称",
-  "data": { "参数": "值" },
-  "echo": "可选的回声标识"
-}
-```
-
-**响应格式：**
-```json
-{
-  "status": "ok",
-  "message": "操作成功",
-  "data": { "结果数据": "值" },
-  "echo": "原样返回的回声标识"
-}
-```
-
-### 4.2 消息发送 API
+### 4.1 消息发送 API
 
 #### 📢 broadcast / send_msg - 广播消息
 ```json
@@ -100,7 +79,7 @@ QueQiao MCDR是QueQiao mod的mcdr移植[https://github.com/17TheWord/QueQiao]，
 }
 ```
 
-### 4.3 数据查询 API
+### 4.2 数据查询 API
 
 #### 👥 get_player_list - 获取玩家列表
 ```json
@@ -158,7 +137,7 @@ QueQiao MCDR是QueQiao mod的mcdr移植[https://github.com/17TheWord/QueQiao]，
 }
 ```
 
-### 4.4 消息格式功能
+### 4.3 消息格式功能
 
 #### 🎨 颜色示例
 ```json
