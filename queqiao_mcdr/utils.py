@@ -9,18 +9,33 @@ import json
 import uuid
 from typing import Dict, Any, Optional
 
-def get_server_version() -> str:
+def get_server_version(server=None) -> str:
     """
     获取服务器版本
+    
+    Args:
+        server: ServerInterface实例，如果在事件处理器中调用可以传入server参数
     
     Returns:
         str: 服务器版本
     """
     try:
-        # 此处应该通过MCDR API获取服务器版本
-        # 由于需要服务器实例，此函数通常在事件处理器中调用
+        # 优先使用传入的server参数
+        if server is not None:
+            server_info = server.get_server_information()
+            if server_info.version is not None:
+                return server_info.version
+        
+        # 如果没有传入server参数，尝试获取全局ServerInterface实例
+        from mcdreforged.plugin.si.server_interface import ServerInterface
+        si = ServerInterface.get_instance()
+        if si is not None:
+            server_info = si.get_server_information()
+            if server_info.version is not None:
+                return server_info.version
+        
         return "unknown"
-    except:
+    except Exception:
         return "unknown"
 
 def generate_uuid() -> str:
