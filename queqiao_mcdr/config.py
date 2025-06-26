@@ -17,7 +17,7 @@ class Config:
         "websocket": {
             "host": "0.0.0.0",
             "port": 8080,
-            "path": "/ws",
+            "path": "/minecraft/ws",
             "auto_start": True
         },
         "server": {
@@ -44,7 +44,7 @@ class Config:
         # 配置属性
         self.websocket_host = "0.0.0.0"
         self.websocket_port = 8080
-        self.websocket_path = "/ws"
+        self.websocket_path = "/minecraft/ws"
         self.auto_start = True
         
         self.server_name = "MCDR Server"
@@ -118,7 +118,7 @@ class Config:
         websocket_config = self.config.get('websocket', {})
         self.websocket_host = websocket_config.get('host', "0.0.0.0")
         self.websocket_port = websocket_config.get('port', 8080)
-        self.websocket_path = websocket_config.get('path', "/ws")
+        self.websocket_path = websocket_config.get('path', "/minecraft/ws")
         self.auto_start = websocket_config.get('auto_start', True)
         
         # 服务器配置

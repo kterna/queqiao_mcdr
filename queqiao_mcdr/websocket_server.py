@@ -38,7 +38,13 @@ class WebSocketServer:
             return
         
         try:
-            self.ws_server = await websockets.serve(self.handle_client, self.host, self.port)
+            # 使用自定义的连接处理器来处理认证
+            self.ws_server = await websockets.serve(
+                self.handle_client, 
+                self.host, 
+                self.port,
+                process_request=self.process_request
+            )
             self._running = True
             self.logger.info(f'WebSocket服务器已启动: ws://{self.host}:{self.port}{self.path}')
         except Exception as e:
@@ -105,6 +111,57 @@ class WebSocketServer:
         """检查WebSocket服务器是否正在运行"""
         return self._running
     
+    async def process_request(self, connection, request):
+        """处理WebSocket连接请求，在握手阶段进行认证"""
+        client_info = f'{connection.remote_address[0]}:{connection.remote_address[1]}'
+        
+        # 检查路径
+        if request.path != self.path:
+            self.logger.warning(f'客户端路径不匹配，期望: {self.path}, 实际: {request.path}')
+            return connection.respond(
+                status=400,
+                headers=[],
+                body=b'Invalid path'
+            )
+        
+        # 如果没有配置访问令牌，则跳过认证
+        if not self.config.access_token:
+            self.logger.debug(f'未配置访问令牌，跳过客户端认证: {client_info}')
+            return None  # 允许连接
+        
+        # 获取Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header:
+            self.logger.warning(f'客户端未提供Authorization header: {client_info}')
+            return connection.respond(
+                status=401,
+                headers=[('WWW-Authenticate', 'Bearer')],
+                body=b'Missing Authorization header'
+            )
+        
+        # 解析Bearer token
+        if not auth_header.startswith('Bearer '):
+            self.logger.warning(f'客户端Authorization header格式错误: {client_info}')
+            return connection.respond(
+                status=401,
+                headers=[('WWW-Authenticate', 'Bearer')],
+                body=b'Invalid Authorization header format'
+            )
+        
+        token = auth_header[7:]  # 移除'Bearer '前缀
+        
+        # 验证访问令牌
+        if token == self.config.access_token:
+            self.logger.debug(f'客户端认证成功: {client_info}')
+            return None  # 允许连接
+        else:
+            self.logger.warning(f'客户端访问令牌无效: {client_info}')
+            return connection.respond(
+                status=401,
+                headers=[('WWW-Authenticate', 'Bearer')],
+                body=b'Invalid access token'
+            )
+    
     async def broadcast_event(self, event_data: Dict[str, Any]):
         """广播事件给所有已认证的客户端"""
         if not self.authenticated_clients:
@@ -125,23 +182,12 @@ class WebSocketServer:
         """处理WebSocket客户端连接"""
         client_info = f'{websocket.remote_address[0]}:{websocket.remote_address[1]}'
         
-        # 检查路径
-        if not self._validate_path(websocket, client_info):
-            return
-        
-        # 添加客户端到未认证列表
+        # 添加客户端到列表（认证已在握手阶段完成）
         self.clients.add(websocket)
-        self.logger.info(f'客户端已连接: {client_info}，当前连接数: {len(self.clients)}')
+        self.authenticated_clients.add(websocket)
+        self.logger.info(f'客户端已连接并认证: {client_info}，当前连接数: {len(self.clients)}')
         
         try:
-            # 进行连接认证
-            if not self._authenticate_client(websocket, client_info):
-                return
-            
-            # 认证成功，添加到已认证客户端列表
-            self.authenticated_clients.add(websocket)
-            self.logger.info(f'客户端认证成功: {client_info}，已认证连接数: {len(self.authenticated_clients)}')
-            
             # 开始处理消息
             async for message in websocket:
                 await self.process_message(websocket, message)
@@ -160,72 +206,7 @@ class WebSocketServer:
                 self.authenticated_clients.remove(websocket)
             self.logger.info(f'客户端已断开: {client_info}，当前连接数: {len(self.clients)}，已认证连接数: {len(self.authenticated_clients)}')
     
-    def _validate_path(self, websocket, client_info: str) -> bool:
-        """验证WebSocket路径"""
-        try:
-            if websocket.path != self.path:
-                self.logger.warning(f'客户端路径不匹配，期望: {self.path}, 实际: {websocket.path}')
-                asyncio.create_task(websocket.close(code=1008, reason='Invalid path'))
-                return False
-            return True
-        except AttributeError:
-            self.logger.debug('无法获取WebSocket路径，跳过路径检查')
-            return True
-    
-    def _authenticate_client(self, websocket, client_info: str) -> bool:
-        """对客户端进行认证"""
-        # 如果没有配置访问令牌，则跳过认证
-        if not self.config.access_token:
-            self.logger.debug(f'未配置访问令牌，跳过客户端认证: {client_info}')
-            return True
-        
-        try:
-            # 检查WebSocket headers中的Authorization
-            auth_header = websocket.request_headers.get('Authorization')
-            if not auth_header:
-                self.logger.warning(f'客户端未提供Authorization header: {client_info}')
-                asyncio.create_task(websocket.close(code=1008, reason='Missing Authorization header'))
-                return False
-            
-            # 解析Bearer token
-            if not auth_header.startswith('Bearer '):
-                self.logger.warning(f'客户端Authorization header格式错误: {client_info}')
-                asyncio.create_task(websocket.close(code=1008, reason='Invalid Authorization header format'))
-                return False
-            
-            token = auth_header[7:]  # 移除'Bearer '前缀
-            
-            # 验证访问令牌
-            if token == self.config.access_token:
-                self.logger.debug(f'客户端认证成功: {client_info}')
-                return True
-            else:
-                self.logger.warning(f'客户端访问令牌无效: {client_info}')
-                asyncio.create_task(websocket.close(code=1008, reason='Invalid access token'))
-                return False
-                
-        except Exception as e:
-            self.logger.error(f'客户端认证过程出错: {client_info}, 错误: {e}')
-            asyncio.create_task(websocket.close(code=1008, reason='Authentication error'))
-            return False
-    
-    def _validate_access_token(self, data: Dict[str, Any]) -> bool:
-        """验证访问令牌"""
-        # 检查消息中的访问令牌
-        message_token = data.get('access_token', '')
-        return message_token == self.config.access_token
-    
-    async def _send_auth_error(self, websocket, error_message: str):
-        """发送认证错误消息并关闭连接"""
-        try:
-            error_response = {
-                'type': 'auth_error',
-                'message': error_message
-            }
-            await websocket.send(json.dumps(error_response))
-            await websocket.close(code=1008, reason='Authentication failed')
-        except:
-            pass  # 如果发送失败，忽略错误
+
     
     async def process_message(self, websocket, message):
         """处理接收到的消息"""
