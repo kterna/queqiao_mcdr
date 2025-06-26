@@ -12,6 +12,7 @@ from typing import Dict, Any, Set, Optional
 from mcdreforged.api.all import *
 
 from queqiao_mcdr.config import Config
+from queqiao_mcdr.response_builder import ResponseBuilder
 
 class WebSocketServer:
     """WebSocket服务器类"""
@@ -245,19 +246,12 @@ class WebSocketServer:
     
     def _handle_echo(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """处理回显消息"""
-        return {
-            'type': 'echo',
-            'message': '收到你的消息',
-            'original': data
-        }
+        return ResponseBuilder.websocket_echo(message='收到你的消息', original_data=data)
     
     async def _send_error_response(self, websocket, error_message: str):
         """发送错误响应"""
         try:
-            error_response = {
-                'type': 'error',
-                'message': error_message
-            }
+            error_response = ResponseBuilder.websocket_error(message=error_message)
             await websocket.send(json.dumps(error_response))
         except:
             pass  # 如果发送失败，忽略错误

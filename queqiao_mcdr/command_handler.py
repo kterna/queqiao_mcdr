@@ -84,17 +84,6 @@ class CommandHandler:
             runs(lambda src: self.on_command_help(src))
         )
     
-    def on_command(self, server: PluginServerInterface, info: Info):
-        """
-        处理命令（旧方式，通过on_info回调）
-        
-        Args:
-            server: MCDR服务器接口
-            info: 信息对象
-        """
-        # 现在使用MCDR的命令系统，此方法仅作为备用
-        pass
-    
     def on_command_start(self, source: CommandSource):
         """
         处理start命令

@@ -13,6 +13,7 @@ from mcdreforged.api.all import *
 
 from queqiao_mcdr.config import Config
 from queqiao_mcdr.message_formatter import MessageFormatter
+from queqiao_mcdr.response_builder import ResponseBuilder
 
 class EventHandler:
     """事件处理器类"""
@@ -87,11 +88,7 @@ class EventHandler:
             event_data = self.create_base_event('notice', 'quit')
             
             # 创建玩家数据（玩家已离开，可能无法获取完整信息）
-            player_data = {
-                'nickname': player,
-                'uuid': '',  # 玩家已离开，可能无法获取UUID
-                'is_op': False  # 默认值
-            }
+            player_data = ResponseBuilder.player_data(nickname=player)
             
             # 添加玩家信息
             event_data['player'] = player_data
@@ -198,42 +195,24 @@ class EventHandler:
     
     def create_base_event(self, post_type: str, sub_type: Optional[str] = None) -> Dict[str, Any]:
         """创建基础事件结构"""
-        # 根据sub_type生成event_name，格式为MCDR + 首字母大写的sub_type
-        event_name = ''
-        if sub_type:
-            if sub_type == 'player_command':
-                event_name = 'MCDRPlayer_command'
-            else:
-                event_name = f'MCDR{sub_type.capitalize()}'
-        
-        return {
-            'server_name': self.config.server_name,
-            'server_version': self.get_server_version(),
-            'server_type': self.config.server_type,
-            'post_type': post_type,
-            'sub_type': sub_type,
-            'event_name': event_name
-        }
+        return ResponseBuilder.base_event(
+            server_name=self.config.server_name,
+            server_version=self.get_server_version(),
+            server_type=self.config.server_type,
+            post_type=post_type,
+            sub_type=sub_type
+        )
     
     def create_player_data(self, player_name: str, player_obj: Optional[Any] = None) -> Dict[str, Any]:
         """创建玩家数据"""
-        player_data = {
-            'nickname': player_name,
-            'uuid': '',
-            'is_op': False,
-            'dimension': None,
-            'coordinate': None
-        }
-        
+        uuid = ''
         # 获取UUID（只从玩家对象获取，不自动生成）
         if player_obj and hasattr(player_obj, 'uuid'):
-            player_data['uuid'] = str(player_obj.uuid)
+            uuid = str(player_obj.uuid)
         elif player_obj and hasattr(player_obj, 'UUID'):
-            player_data['uuid'] = str(player_obj.UUID)
+            uuid = str(player_obj.UUID)
         
-        player_data['is_op'] = None
-        
-        return player_data
+        return ResponseBuilder.player_data(nickname=player_name, uuid=uuid, is_op=None)
     
     def get_server_version(self) -> str:
         """获取服务器版本"""
@@ -293,11 +272,11 @@ class EventHandler:
                     try:
                         coordinate = minecraft_data_api.get_player_coordinate(player_name, timeout=1.5)
                         if coordinate:
-                            event_data['player']['coordinate'] = {
-                                'x': getattr(coordinate, 'x', None),
-                                'y': getattr(coordinate, 'y', None),
-                                'z': getattr(coordinate, 'z', None)
-                            }
+                            event_data['player']['coordinate'] = ResponseBuilder.coordinate_data(
+                                x=getattr(coordinate, 'x', None),
+                                y=getattr(coordinate, 'y', None),
+                                z=getattr(coordinate, 'z', None)
+                            )
                     except Exception as e:
                         self.logger.error(f'获取玩家 {player_name} 坐标信息失败: {e}')
                 else:

@@ -12,6 +12,7 @@ from mcdreforged.api.all import *
 
 from queqiao_mcdr.config import Config
 from queqiao_mcdr.message_formatter import MessageFormatter
+from queqiao_mcdr.response_builder import ResponseBuilder
 
 class ApiHandler:
     """API处理器类"""
@@ -54,21 +55,17 @@ class ApiHandler:
             player_name = player.name if hasattr(player, 'name') else str(player)
             player_uuid = str(player.uuid) if hasattr(player, 'uuid') else ''
             
-            players.append({
-                'nickname': player_name,
-                'uuid': player_uuid,
-                'is_op': False,
-                'dimension': None,
-                'coordinate': None,
-                'permission_level': 0,
-                'online': True
-            })
+            players.append(ResponseBuilder.player_data(
+                nickname=player_name,
+                uuid=player_uuid,
+                permission_level=0,
+            ))
         
-        return {
-            'players': players,
-            'count': len(players),
-            'max_players': getattr(player_list_result, 'limit', None)
-        }
+        return ResponseBuilder.player_list_data(
+            players=players, 
+            count=len(players), 
+            max_players=getattr(player_list_result, 'limit', None)
+        )
     
 
 
@@ -88,14 +85,11 @@ class ApiHandler:
     
     def _success_response(self, message: str, echo: Optional[str] = None, data: Optional[Dict] = None) -> Dict[str, Any]:
         """创建成功响应"""
-        response = {'status': 'ok', 'message': message, 'echo': echo}
-        if data:
-            response['data'] = data
-        return response
+        return ResponseBuilder.api_success(message=message, echo=echo, data=data)
     
     def _error_response(self, message: str, echo: Optional[str] = None) -> Dict[str, Any]:
         """创建错误响应"""
-        return {'status': 'failed', 'message': message, 'echo': echo}
+        return ResponseBuilder.api_error(message=message, echo=echo)
     
     def _find_player(self, uuid: Optional[str] = None, nickname: Optional[str] = None) -> Optional[str]:
         """查找玩家名称"""
@@ -113,17 +107,9 @@ class ApiHandler:
     
     def _get_player_detail_info(self, player_name: str) -> Dict[str, Any]:
         """获取玩家详细信息"""
-        player_data = {
-            'nickname': player_name,
-            'uuid': '',
-            'is_op': False,
-            'dimension': None,
-            'coordinate': None,
-            'permission_level': 0,
-            'online': False
-        }
+        player_data = ResponseBuilder.player_data(nickname=player_name)
         
-        # 获取权限信息和MC服务器原生OP状态
+        # 获取权限信息
         try:
             # 获取MCDR权限等级
             mcdr_server = self.server.get_mcdr_server()
@@ -131,13 +117,6 @@ class ApiHandler:
             permission_level = permission_manager.get_player_permission_level(player_name)
             player_data['permission_level'] = permission_level
             
-            # 通过RCON查询MC服务器的原生OP状态
-            op_list_result = self.server.rcon_query('op list')
-            if op_list_result:
-                player_data['is_op'] = player_name in op_list_result
-            else:
-                # RCON不可用时回退到MCDR权限系统
-                player_data['is_op'] = permission_level >= 3
         except:
             pass
         
@@ -148,7 +127,6 @@ class ApiHandler:
                 for p in player_list_result.players:
                     p_name = p.name if hasattr(p, 'name') else str(p)
                     if p_name == player_name:
-                        player_data['online'] = True
                         player_data['uuid'] = str(p.uuid) if hasattr(p, 'uuid') else ''
                         self._get_player_location_info(player_name, player_data)
                         break
@@ -167,11 +145,11 @@ class ApiHandler:
         # 获取坐标
         coordinate = self._call_minecraft_data_api_safe('get_player_coordinate', player_name, timeout=2.0)
         if coordinate:
-            player_data['coordinate'] = {
-                'x': getattr(coordinate, 'x', None),
-                'y': getattr(coordinate, 'y', None),
-                'z': getattr(coordinate, 'z', None)
-            }
+            player_data['coordinate'] = ResponseBuilder.coordinate_data(
+                x=getattr(coordinate, 'x', None),
+                y=getattr(coordinate, 'y', None),
+                z=getattr(coordinate, 'z', None)
+            )
 
     async def broadcast(self, data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
         """广播消息"""
@@ -208,7 +186,7 @@ class ApiHandler:
             return self._success_response(
                 'Private message sent',
                 echo,
-                {'player': {'nickname': player, 'uuid': uuid or ''}}
+                {'player': ResponseBuilder.player_data(nickname=player, uuid=uuid or '')}
             )
         except Exception as e:
             return self._error_response(f'Failed to send private message: {str(e)}', echo)
