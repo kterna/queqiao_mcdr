@@ -4,6 +4,43 @@
 
 QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植，支持跨服务器的消息传递和事件处理。
 
+## 2. 安装配置
+
+### 2.1 依赖要求
+
+- MCDReforged >= 2.0.0
+- Python >= 3.8
+- websockets >= 15.0.0
+
+### 2.2 安装步骤
+
+1. 将插件文件放入 `plugins` 目录
+2. 重启或重载 MCDR
+3. 编辑生成的配置文件
+4. 重载插件或重启 MCDR
+
+### 2.3 配置文件
+
+插件会在 `config/queqiao_mcdr/config.json` 生成配置文件：
+
+```json
+{
+  "websocket": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "path": "/ws",
+    "auto_start": true
+  },
+  "server": {
+    "name": "MyServer",
+    "type": "mcdr"
+  },
+  "security": {
+    "access_token": ""
+  }
+}
+```
+
 #### 配置项说明
 
 - **websocket**：WebSocket服务器配置
@@ -137,9 +174,142 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-### 4.3 消息格式功能
+### 4.3 WebSocket 内置消息
 
-#### 🎨 颜色示例
+#### 🏓 ping - 心跳检测
+```json
+{
+  "type": "ping"
+}
+```
+**响应：**
+```json
+{
+  "type": "pong",
+  "message": "pong",
+  "timestamp": 1234567890.123
+}
+```
+
+#### 🧪 test - 测试连接
+```json
+{
+  "type": "test",
+  "data": "test data"
+}
+```
+**响应：**
+```json
+{
+  "type": "test_response",
+  "message": "测试响应成功",
+  "echo": {"type": "test", "data": "test data"}
+}
+```
+
+## 5. 事件监听
+
+插件会自动广播以下事件给所有已连接的客户端：
+
+### 5.1 玩家加入事件
+```json
+{
+  "server_name": "MyServer",
+  "server_version": "1.21.1",
+  "server_type": "mcdr",
+  "post_type": "notice",
+  "sub_type": "join",
+  "event_name": "MCDRJoin",
+  "player": {
+    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "is_op": false,
+    "dimension": "0",
+    "coordinate": {"x": 100, "y": 64, "z": -200}
+  }
+}
+```
+
+### 5.2 玩家离开事件
+```json
+{
+  "server_name": "MyServer",
+  "server_version": "1.21.1",
+  "server_type": "mcdr",
+  "post_type": "notice",
+  "sub_type": "quit",
+  "event_name": "MCDRQuit",
+  "player": {
+    "nickname": "PlayerName",
+    "uuid": "",
+    "is_op": false
+  }
+}
+```
+
+### 5.3 聊天消息事件
+```json
+{
+  "server_name": "MyServer",
+  "server_version": "1.21.1", 
+  "server_type": "mcdr",
+  "post_type": "message",
+  "sub_type": "chat",
+  "event_name": "MCDRChat",
+  "player": {
+    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "is_op": false,
+    "dimension": "0",
+    "coordinate": {"x": 100, "y": 64, "z": -200}
+  },
+  "message": "Hello world!"
+}
+```
+
+### 5.4 玩家命令事件
+```json
+{
+  "server_name": "MyServer",
+  "server_version": "1.21.1",
+  "server_type": "mcdr", 
+  "post_type": "message",
+  "sub_type": "player_command",
+  "event_name": "MCDRPlayer_command",
+  "player": {
+    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "is_op": false,
+    "dimension": "0",
+    "coordinate": {"x": 100, "y": 64, "z": -200}
+  },
+  "message": "/tp 0 64 0"
+}
+```
+
+### 5.5 玩家死亡事件
+```json
+{
+  "server_name": "MyServer",
+  "server_version": "1.21.1",
+  "server_type": "mcdr",
+  "post_type": "message", 
+  "sub_type": "death",
+  "event_name": "MCDRDeath",
+  "player": {
+    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+    "is_op": false,
+    "dimension": "0",
+    "coordinate": {"x": 100, "y": 64, "z": -200}
+  },
+  "message": "PlayerName was slain by Zombie"
+}
+```
+
+## 6. 消息格式功能
+
+### 6.1 颜色示例
 ```json
 {
   "api": "broadcast",
@@ -164,7 +334,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-#### ✨ 样式示例
+### 6.2 样式示例
 ```json
 {
   "api": "broadcast",
@@ -196,7 +366,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-#### 🖱️ 点击事件示例
+### 6.3 点击事件示例
 ```json
 {
   "api": "broadcast",
@@ -229,7 +399,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-#### 💬 悬浮提示示例
+### 6.4 悬浮提示示例
 ```json
 {
   "api": "broadcast",
@@ -251,7 +421,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-#### 🎯 组合功能示例
+### 6.5 组合功能示例
 ```json
 {
   "api": "send_private_msg",
