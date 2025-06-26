@@ -228,36 +228,12 @@ class WebSocketServer:
     
     async def _route_message(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """路由消息到相应的处理器"""
-        message_type = data.get('type', 'unknown')
-        
-        # 消息处理器映射
-        handlers = {
-            'ping': self._handle_ping,
-            'test': self._handle_test,
-        }
-        
-        if message_type in handlers:
-            return await handlers[message_type](data)
-        elif 'api' in data:
+        if 'api' in data:
             return await self._handle_api_request(data)
         else:
             return self._handle_echo(data)
     
-    async def _handle_ping(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理ping消息"""
-        return {
-            'type': 'pong',
-            'message': 'pong',
-            'timestamp': asyncio.get_event_loop().time()
-        }
-    
-    async def _handle_test(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理测试消息"""
-        return {
-            'type': 'test_response',
-            'message': '测试响应成功',
-            'echo': data
-        }
+
     
     async def _handle_api_request(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """处理API请求"""

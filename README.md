@@ -174,38 +174,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 }
 ```
 
-### 4.3 WebSocket 内置消息
 
-#### 🏓 ping - 心跳检测
-```json
-{
-  "type": "ping"
-}
-```
-**响应：**
-```json
-{
-  "type": "pong",
-  "message": "pong",
-  "timestamp": 1234567890.123
-}
-```
-
-#### 🧪 test - 测试连接
-```json
-{
-  "type": "test",
-  "data": "test data"
-}
-```
-**响应：**
-```json
-{
-  "type": "test_response",
-  "message": "测试响应成功",
-  "echo": {"type": "test", "data": "test data"}
-}
-```
 
 ## 5. 事件监听
 

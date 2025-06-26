@@ -28,9 +28,6 @@ class ApiHandler:
         self.logger = server.logger
         self.config = config
         
-        # 初始化时检测可用方法
-        self._init_api_availability()
-        
         # API方法映射
         self.api_methods = {
             'broadcast': self.broadcast,
@@ -42,13 +39,7 @@ class ApiHandler:
             'get_player_info': self.get_player_info
         }
     
-    def _init_api_availability(self):
-        """初始化API可用性检测"""
-        # 检测minecraft_data_api可用性
-        try:
-            self.has_minecraft_data_api = self.server.get_plugin_instance('minecraft_data_api') is not None
-        except:
-            self.has_minecraft_data_api = False
+
     
 
     
@@ -79,30 +70,7 @@ class ApiHandler:
             'max_players': getattr(player_list_result, 'limit', None)
         }
     
-    def _get_player_list_via_permission(self) -> Dict:
-        """通过权限管理器获取玩家列表"""
-        mcdr_server = self.server.get_mcdr_server()
-        permission_manager = mcdr_server.permission_manager
-        player_names = list(permission_manager.get_players())
-        
-        players = [
-            {
-                'nickname': name, 
-                'uuid': '', 
-                'is_op': False,
-                'dimension': None, 
-                'coordinate': None,
-                'permission_level': 0,
-                'online': False
-            }
-            for name in player_names
-        ]
-        
-        return {
-            'players': players,
-            'count': len(players),
-            'max_players': None
-        }
+
 
     async def handle_api_request(self, api_name: str, api_data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
         """处理API请求"""
@@ -174,19 +142,18 @@ class ApiHandler:
             pass
         
         # 获取在线状态和位置信息
-        if self.has_minecraft_data_api:
-            try:
-                player_list_result = self._call_minecraft_data_api_safe('get_server_player_list', timeout=3.0)
-                if player_list_result:
-                    for p in player_list_result.players:
-                        p_name = p.name if hasattr(p, 'name') else str(p)
-                        if p_name == player_name:
-                            player_data['online'] = True
-                            player_data['uuid'] = str(p.uuid) if hasattr(p, 'uuid') else ''
-                            self._get_player_location_info(player_name, player_data)
-                            break
-            except:
-                pass
+        try:
+            player_list_result = self._call_minecraft_data_api_safe('get_server_player_list', timeout=3.0)
+            if player_list_result:
+                for p in player_list_result.players:
+                    p_name = p.name if hasattr(p, 'name') else str(p)
+                    if p_name == player_name:
+                        player_data['online'] = True
+                        player_data['uuid'] = str(p.uuid) if hasattr(p, 'uuid') else ''
+                        self._get_player_location_info(player_name, player_data)
+                        break
+        except:
+            pass
             
         return player_data
     
@@ -288,18 +255,9 @@ class ApiHandler:
             return self._error_response(f'Failed to display actionbar message: {str(e)}', echo)
     
     async def get_player_list(self, data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
-        """获取在线玩家列表（简化回退机制）"""
+        """获取在线玩家列表"""
         try:
-            # 优先使用minecraft_data_api
-            if self.has_minecraft_data_api:
-                try:
-                    result = self._get_player_list_via_api()
-                    return self._success_response('Player list retrieved', echo, result)
-                except:
-                    pass  # 失败时继续使用权限管理器
-            
-            # 回退到权限管理器
-            result = self._get_player_list_via_permission()
+            result = self._get_player_list_via_api()
             return self._success_response('Player list retrieved', echo, result)
         except Exception as e:
             return self._error_response(f'Failed to get player list: {str(e)}', echo)
@@ -321,18 +279,9 @@ class ApiHandler:
             return self._error_response(f'Failed to get player info: {str(e)}', echo)
     
     def _call_minecraft_data_api_safe(self, method_name: str, *args, **kwargs):
-        """安全地调用minecraft_data_api方法"""
-        try:
-            minecraft_data_api = self.server.get_plugin_instance('minecraft_data_api')
-            if not minecraft_data_api:
-                return None
-            
-            method = getattr(minecraft_data_api, method_name, None)
-            if not method:
-                return None
-            
-            return method(*args, **kwargs)
-        except Exception as e:
-            return None
+        """调用minecraft_data_api方法"""
+        minecraft_data_api = self.server.get_plugin_instance('minecraft_data_api')
+        method = getattr(minecraft_data_api, method_name)
+        return method(*args, **kwargs)
     
 
