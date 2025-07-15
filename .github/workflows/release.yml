@@ -1,0 +1,115 @@
+name: Release MCDR Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'  # 触发条件：推送以 'v' 开头的标签，如 v1.0.0
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+        
+    - name: Get version from tag
+      id: get_version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        else
+          VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
+        
+    - name: Update plugin version
+      run: |
+        # 更新 mcdreforged.plugin.json 中的版本号
+        python -c "
+import json
+with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+data['version'] = '${{ steps.get_version.outputs.version }}'
+with open('mcdreforged.plugin.json', 'w', encoding='utf-8') as f:
+    json.dump(data, f, ensure_ascii=False, indent=4)
+"
+        
+    - name: Create plugin archive
+      run: |
+        # 创建临时目录
+        mkdir -p build
+        
+        # 复制插件文件到临时目录
+        cp -r queqiao_mcdr build/
+        cp mcdreforged.plugin.json build/
+        cp requirements.txt build/
+        cp README.md build/
+        
+        # 如果存在 LICENSE 文件，也复制进去
+        if [ -f LICENSE ]; then
+          cp LICENSE build/
+        fi
+        
+        # 创建 zip 文件
+        cd build
+        zip -r ../queqiao_mcdr-${{ steps.get_version.outputs.version }}.zip .
+        cd ..
+        
+        # 重命名为 .mcdr 文件
+        mv queqiao_mcdr-${{ steps.get_version.outputs.version }}.zip queqiao_mcdr-${{ steps.get_version.outputs.version }}.mcdr
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        cat > release_notes.md << 'EOF'
+        ## QueQiao MCDR v${{ steps.get_version.outputs.version }}
+        
+        ### 功能特性
+        - 🌐 跨服务器通信支持
+        - 📡 WebSocket API 接口
+        - 💬 实时消息广播
+        - 👥 玩家管理功能
+        - 🎨 富文本格式支持
+        - 🔐 基于令牌的身份验证
+        
+        ### 安装方法
+        1. 下载 `queqiao_mcdr-${{ steps.get_version.outputs.version }}.mcdr` 文件
+        2. 将文件放入 MCDReforged 的 `plugins/` 目录
+        3. 重启或重载 MCDReforged
+        4. 使用 `!!queqiao help` 查看帮助信息
+        
+        ### 依赖要求
+        - MCDReforged >= 2.0.0
+        - minecraft_data_api >= 1.0.0
+        - Python >= 3.8
+        
+        ### 更多信息
+        请查看 [README.md](https://github.com/kterna/QueQiao_MCDR/blob/main/README.md) 获取详细的配置和使用说明。
+        EOF
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: QueQiao MCDR v${{ steps.get_version.outputs.version }}
+        body_path: release_notes.md
+        files: |
+          queqiao_mcdr-${{ steps.get_version.outputs.version }}.mcdr
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: queqiao_mcdr-${{ steps.get_version.outputs.version }}
+        path: queqiao_mcdr-${{ steps.get_version.outputs.version }}.mcdr

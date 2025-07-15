@@ -1,0 +1,108 @@
+name: Build MCDR Plugin
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # 允许手动触发构建
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.8'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        
+    - name: Validate plugin structure
+      run: |
+        # 检查必要文件是否存在
+        if [ ! -f "mcdreforged.plugin.json" ]; then
+          echo "错误: 缺少 mcdreforged.plugin.json 文件"
+          exit 1
+        fi
+        
+        if [ ! -d "queqiao_mcdr" ]; then
+          echo "错误: 缺少 queqiao_mcdr 目录"
+          exit 1
+        fi
+        
+        if [ ! -f "queqiao_mcdr/__init__.py" ]; then
+          echo "错误: 缺少 queqiao_mcdr/__init__.py 文件"
+          exit 1
+        fi
+        
+        echo "插件结构验证通过"
+        
+    - name: Validate plugin metadata
+      run: |
+        python -c "
+import json
+import sys
+
+try:
+    with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    required_fields = ['id', 'version', 'name', 'author']
+    for field in required_fields:
+        if field not in data:
+            print(f'错误: mcdreforged.plugin.json 缺少必需字段: {field}')
+            sys.exit(1)
+    
+    print('插件元数据验证通过')
+    print(f'插件ID: {data[\"id\"]}')
+    print(f'版本: {data[\"version\"]}')
+    print(f'名称: {data[\"name\"]}')
+    print(f'作者: {data[\"author\"]}')
+    
+except Exception as e:
+    print(f'验证插件元数据时出错: {e}')
+    sys.exit(1)
+"
+        
+    - name: Create development build
+      run: |
+        # 创建开发版本构建
+        BUILD_TIME=$(date +%Y%m%d-%H%M%S)
+        VERSION="dev-$BUILD_TIME"
+        
+        # 创建临时目录
+        mkdir -p build
+        
+        # 复制插件文件
+        cp -r queqiao_mcdr build/
+        cp mcdreforged.plugin.json build/
+        cp requirements.txt build/
+        cp README.md build/
+        
+        # 如果存在 LICENSE 文件，也复制进去
+        if [ -f LICENSE ]; then
+          cp LICENSE build/
+        fi
+        
+        # 创建 zip 文件并重命名为 .mcdr
+        cd build
+        zip -r ../queqiao_mcdr-$VERSION.zip .
+        cd ..
+        mv queqiao_mcdr-$VERSION.zip queqiao_mcdr-$VERSION.mcdr
+        
+        echo "构建完成: queqiao_mcdr-$VERSION.mcdr"
+        
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: queqiao_mcdr-dev-build
+        path: queqiao_mcdr-*.mcdr
+        retention-days: 30
