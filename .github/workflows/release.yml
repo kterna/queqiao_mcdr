@@ -34,13 +34,13 @@ jobs:
       run: |
         # 更新 mcdreforged.plugin.json 中的版本号
         python -c "
-import json
-with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
-    data = json.load(f)
-data['version'] = '${{ steps.get_version.outputs.version }}'
-with open('mcdreforged.plugin.json', 'w', encoding='utf-8') as f:
-    json.dump(data, f, ensure_ascii=False, indent=4)
-"
+        import json
+        with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        data['version'] = '${{ steps.get_version.outputs.version }}'
+        with open('mcdreforged.plugin.json', 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+        "
         
     - name: Create plugin archive
       run: |
