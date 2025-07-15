@@ -48,29 +48,29 @@ jobs:
     - name: Validate plugin metadata
       run: |
         python -c "
-import json
-import sys
-
-try:
-    with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
-        data = json.load(f)
-    
-    required_fields = ['id', 'version', 'name', 'author']
-    for field in required_fields:
-        if field not in data:
-            print(f'错误: mcdreforged.plugin.json 缺少必需字段: {field}')
+        import json
+        import sys
+        
+        try:
+            with open('mcdreforged.plugin.json', 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            required_fields = ['id', 'version', 'name', 'author']
+            for field in required_fields:
+                if field not in data:
+                    print(f'错误: mcdreforged.plugin.json 缺少必需字段: {field}')
+                    sys.exit(1)
+            
+            print('插件元数据验证通过')
+            print(f'插件ID: {data[\"id\"]}')
+            print(f'版本: {data[\"version\"]}')
+            print(f'名称: {data[\"name\"]}')
+            print(f'作者: {data[\"author\"]}')
+            
+        except Exception as e:
+            print(f'验证插件元数据时出错: {e}')
             sys.exit(1)
-    
-    print('插件元数据验证通过')
-    print(f'插件ID: {data[\"id\"]}')
-    print(f'版本: {data[\"version\"]}')
-    print(f'名称: {data[\"name\"]}')
-    print(f'作者: {data[\"author\"]}')
-    
-except Exception as e:
-    print(f'验证插件元数据时出错: {e}')
-    sys.exit(1)
-"
+        "
         
     - name: Create development build
       run: |
