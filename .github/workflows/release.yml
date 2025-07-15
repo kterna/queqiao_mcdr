@@ -109,7 +109,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: queqiao_mcdr-${{ steps.get_version.outputs.version }}
         path: queqiao_mcdr-${{ steps.get_version.outputs.version }}.mcdr
