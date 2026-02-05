@@ -1,8 +1,8 @@
 {
     "id": "queqiao_mcdr",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "QueQiao MCDR",
-    "description": "一个类似QueQiao模组的MCDR插件，通过WebSocket实现跨服务器通信",
+    "description": "移植自QueQiao模组的MCDR插件，通过 WebSocket 实现跨服务器通信",
     "author": "kterna",
     "link": "https://github.com/kterna/QueQiao_MCDR",
     "dependencies": {

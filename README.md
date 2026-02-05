@@ -2,7 +2,7 @@
 
 ## 1. 插件介绍
 
-QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植，支持跨服务器的消息传递和事件处理。
+QueQiao MCDR 是 [QueQiao mod](https://github.com/17TheWord/QueQiao) 的 MCDR 移植版本，当前默认使用 **QueqiaoV2** 的通信格式，支持跨服务器的消息传递和事件处理。
 
 ## 2. 安装配置
 
@@ -25,12 +25,12 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 
 ```json
 {
-  "websocket": {
-    "host": "0.0.0.0",
-    "port": 8080,
-    "path": "/ws",
-    "auto_start": true
-  },
+	  "websocket": {
+	    "host": "0.0.0.0",
+	    "port": 8080,
+	    "path": "/minecraft/ws",
+	    "auto_start": true
+	  },
   "server": {
     "name": "MyServer",
     "type": "mcdr"
@@ -46,7 +46,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 - **websocket**：WebSocket服务器配置
   - `host`：监听地址，默认为 `0.0.0.0`
   - `port`：监听端口，默认为 `8080`
-  - `path`：WebSocket路径，默认为 `/ws`
+  - `path`：WebSocket路径，默认为 `/minecraft/ws`
   - `auto_start`：是否自动启动WebSocket服务器，默认为 `true`
 
 - **server**：服务器信息配置
@@ -86,7 +86,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 {
   "api": "send_private_msg",
   "data": {
-    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
     "message": "Hello player!"
   }
 }
@@ -188,7 +188,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "server_type": "mcdr",
   "post_type": "notice",
   "sub_type": "join",
-  "event_name": "MCDRJoin",
+  "event_name": "PlayerJoinEvent",
   "player": {
     "nickname": "PlayerName",
     "uuid": "123e4567-e89b-12d3-a456-426614174000",
@@ -207,7 +207,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "server_type": "mcdr",
   "post_type": "notice",
   "sub_type": "quit",
-  "event_name": "MCDRQuit",
+  "event_name": "PlayerQuitEvent",
   "player": {
     "nickname": "PlayerName",
     "uuid": "",
@@ -224,7 +224,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "server_type": "mcdr",
   "post_type": "message",
   "sub_type": "chat",
-  "event_name": "MCDRChat",
+  "event_name": "PlayerChatEvent",
   "player": {
     "nickname": "PlayerName",
     "uuid": "123e4567-e89b-12d3-a456-426614174000",
@@ -244,7 +244,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "server_type": "mcdr", 
   "post_type": "message",
   "sub_type": "player_command",
-  "event_name": "MCDRPlayer_command",
+  "event_name": "PlayerCommandEvent",
   "player": {
     "nickname": "PlayerName",
     "uuid": "123e4567-e89b-12d3-a456-426614174000",
@@ -264,7 +264,7 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "server_type": "mcdr",
   "post_type": "message", 
   "sub_type": "death",
-  "event_name": "MCDRDeath",
+  "event_name": "PlayerDeathEvent",
   "player": {
     "nickname": "PlayerName",
     "uuid": "123e4567-e89b-12d3-a456-426614174000",
@@ -278,6 +278,8 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 
 ## 6. 消息格式功能
 
+QueqiaoV2 推荐使用 **原生 Minecraft JSON 组件**（下方示例），同时也兼容旧版 `type/data` 包装格式。
+
 ### 6.1 颜色示例
 ```json
 {
@@ -285,18 +287,12 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "data": {
     "message": [
       {
-        "type": "text",
-        "data": {
-          "text": "红色文字",
-          "color": "red"
-        }
+        "text": "红色文字",
+        "color": "red"
       },
       {
-        "type": "text", 
-        "data": {
-          "text": "蓝色文字",
-          "color": "blue"
-        }
+        "text": "蓝色文字",
+        "color": "blue"
       }
     ]
   }
@@ -310,25 +306,16 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "data": {
     "message": [
       {
-        "type": "text",
-        "data": {
-          "text": "粗体",
-          "bold": true
-        }
+        "text": "粗体",
+        "bold": true
       },
       {
-        "type": "text",
-        "data": {
-          "text": "斜体",
-          "italic": true
-        }
+        "text": "斜体",
+        "italic": true
       },
       {
-        "type": "text",
-        "data": {
-          "text": "下划线",
-          "underlined": true
-        }
+        "text": "下划线",
+        "underlined": true
       }
     ]
   }
@@ -342,25 +329,19 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "data": {
     "message": [
       {
-        "type": "text",
-        "data": {
-          "text": "点击执行命令",
-          "color": "green",
-          "click_event": {
-            "action": "run_command",
-            "value": "/spawn"
-          }
+        "text": "点击执行命令",
+        "color": "green",
+        "clickEvent": {
+          "action": "run_command",
+          "value": "/spawn"
         }
       },
       {
-        "type": "text",
-        "data": {
-          "text": "点击打开网页",
-          "color": "blue",
-          "click_event": {
-            "action": "open_url",
-            "value": "https://minecraft.net"
-          }
+        "text": "点击打开网页",
+        "color": "blue",
+        "clickEvent": {
+          "action": "open_url",
+          "value": "https://minecraft.net"
         }
       }
     ]
@@ -375,14 +356,11 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
   "data": {
     "message": [
       {
-        "type": "text",
-        "data": {
-          "text": "悬浮查看详情",
-          "color": "yellow",
-          "hover_event": {
-            "action": "show_text",
-            "value": "这是详细信息"
-          }
+        "text": "悬浮查看详情",
+        "color": "yellow",
+        "hoverEvent": {
+          "action": "show_text",
+          "contents": "这是详细信息"
         }
       }
     ]
@@ -395,30 +373,24 @@ QueQiao MCDR是[QueQiao mod](https://github.com/17TheWord/QueQiao)的mcdr移植�
 {
   "api": "send_private_msg",
   "data": {
-    "nickname": "PlayerName",
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
     "message": [
       {
-        "type": "text",
-        "data": {
-          "text": "[重要] ",
-          "color": "red",
-          "bold": true
-        }
+        "text": "[重要] ",
+        "color": "red",
+        "bold": true
       },
       {
-        "type": "text",
-        "data": {
-          "text": "点击加入QQ群",
-          "color": "blue",
-          "underlined": true,
-          "click_event": {
-            "action": "open_url",
-            "value": "https://qm.qq.com/xxx"
-          },
-          "hover_event": {
-            "action": "show_text",
-            "value": "点击打开QQ群链接"
-          }
+        "text": "点击加入QQ群",
+        "color": "blue",
+        "underlined": true,
+        "clickEvent": {
+          "action": "open_url",
+          "value": "https://qm.qq.com/xxx"
+        },
+        "hoverEvent": {
+          "action": "show_text",
+          "contents": "点击打开QQ群链接"
         }
       }
     ]

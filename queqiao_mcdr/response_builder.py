@@ -102,13 +102,16 @@ class ResponseBuilder:
         Returns:
             Dict[str, Any]: 基础事件对象
         """
-        # 根据sub_type生成event_name，格式为MCDR + 首字母大写的sub_type
-        event_name = ''
-        if sub_type:
-            if sub_type == 'player_command':
-                event_name = 'MCDRPlayer_command'
-            else:
-                event_name = f'MCDR{sub_type.capitalize()}'
+        # Queqiao V2: 使用标准化的事件名
+        event_name_map = {
+            'chat': 'PlayerChatEvent',
+            'join': 'PlayerJoinEvent',
+            'quit': 'PlayerQuitEvent',
+            'death': 'PlayerDeathEvent',
+            'player_command': 'PlayerCommandEvent',
+            'achievent': 'PlayerAchievementEvent',
+        }
+        event_name = event_name_map.get(sub_type or '', '')
         
         return {
             'server_name': server_name,

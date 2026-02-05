@@ -95,7 +95,26 @@ class ApiHandler:
         """查找玩家名称"""
         if nickname:
             return nickname
-        # 如果只有UUID而没有nickname，无法查找，返回None
+        if not uuid:
+            return None
+
+        # 通过 minecraft_data_api 的在线玩家列表从 UUID 反查玩家名
+        try:
+            player_list_result = self._call_minecraft_data_api_safe('get_server_player_list', timeout=3.0)
+            if not player_list_result or not getattr(player_list_result, 'players', None):
+                return None
+
+            uuid_lower = str(uuid).lower()
+            for player in player_list_result.players:
+                player_uuid = getattr(player, 'uuid', None)
+                if player_uuid is None:
+                    continue
+                if str(player_uuid).lower() == uuid_lower:
+                    player_name = getattr(player, 'name', None)
+                    return str(player_name) if player_name else None
+        except Exception:
+            return None
+
         return None
     
     def _format_message_for_command(self, message) -> str:

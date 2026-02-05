@@ -1,7 +1,7 @@
 """
 QueQiao MCDR插件入口文件
 
-这个插件实现了类似QueQiao模组的功能，通过WebSocket协议连接不同的Minecraft服务器，
+这个插件移植了QueQiao模组的功能，通过WebSocket协议连接不同的Minecraft服务器，
 支持跨服务器的消息传递和事件处理。
 """
 
@@ -24,11 +24,11 @@ from queqiao_mcdr.utils import get_server_version
 # 插件元数据
 PLUGIN_METADATA = {
     'id': 'queqiao_mcdr',
-    'version': '1.0.0',
+    'version': '1.1.0',
     'name': 'QueQiao MCDR',
-    'description': '一个类似QueQiao模组的MCDR插件，通过WebSocket实现跨服务器通信',
-    'author': 'Manus',
-    'link': 'https://github.com/17TheWord/QueQiao',
+    'description': '移植自QueQiao模组的MCDR插件，通过 WebSocket 实现跨服务器通信',
+    'author': 'kterna',
+    'link': 'https://github.com/kterna/QueQiao_MCDR',
     'dependencies': {
         'mcdreforged': '>=2.0.0'
     }
