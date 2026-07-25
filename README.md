@@ -4,6 +4,13 @@
 
 QueQiao MCDR 是 [QueQiao mod](https://github.com/17TheWord/QueQiao) 的 MCDR 移植版本，当前默认使用 **QueqiaoV2** 的通信格式，支持跨服务器的消息传递和事件处理。
 
+自 **v1.2.0** 起支持两种连接模式：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| `server`（默认） | MCDR 开 WebSocket Server，对接端主动连入 | 自建服，可开放端口 |
+| `client` | MCDR 作为 Client 主动连接对接端 | 租赁服，无法自定义开放端口 |
+
 ## 2. 安装配置
 
 ### 2.1 依赖要求
@@ -21,16 +28,19 @@ QueQiao MCDR 是 [QueQiao mod](https://github.com/17TheWord/QueQiao) 的 MCDR �
 
 ### 2.3 配置文件
 
-插件会在 `config/queqiao_mcdr/config.json` 生成配置文件：
+插件会在 `config/queqiao_mcdr/config.json` 生成配置文件。
+
+#### 正向模式（server，默认）
 
 ```json
 {
-	  "websocket": {
-	    "host": "0.0.0.0",
-	    "port": 8080,
-	    "path": "/minecraft/ws",
-	    "auto_start": true
-	  },
+  "mode": "server",
+  "websocket": {
+    "host": "0.0.0.0",
+    "port": 8080,
+    "path": "/minecraft/ws",
+    "auto_start": true
+  },
   "server": {
     "name": "MyServer",
     "type": "mcdr"
@@ -41,29 +51,48 @@ QueQiao MCDR 是 [QueQiao mod](https://github.com/17TheWord/QueQiao) 的 MCDR �
 }
 ```
 
+#### 反向模式（client，租赁服推荐）
+
+```json
+{
+  "mode": "client",
+  "websocket": {
+    "url": "ws://你的AstrBot地址:8080/minecraft/ws",
+    "auto_start": true,
+    "reconnect_interval": 5,
+    "reconnect_max_times": 0
+  },
+  "server": {
+    "name": "MyServer",
+    "type": "mcdr"
+  },
+  "security": {
+    "access_token": "your_token"
+  }
+}
+```
+
+对接端（如 `astrbot_plugin_mcqq`）需配置 `ws_mode=server`，并保证 `server_name` 与 `access_token` 一致。
+
 #### 配置项说明
 
-- **websocket**：WebSocket服务器配置
-  - `host`：监听地址，默认为 `0.0.0.0`
-  - `port`：监听端口，默认为 `8080`
-  - `path`：WebSocket路径，默认为 `/minecraft/ws`
-  - `auto_start`：是否自动启动WebSocket服务器，默认为 `true`
-
-- **server**：服务器信息配置
-  - `name`：服务器名称，用于事件数据
-  - `type`：服务器类型，默认为 `mcdr`
-
-- **security**：安全配置
-  - `access_token`：访问令牌，为空则不验证
+- **mode**：`server` 或 `client`
+- **websocket**：
+  - `host` / `port` / `path`：server 模式监听配置
+  - `url`：client 模式目标地址
+  - `reconnect_interval` / `reconnect_max_times`：client 重连（0 = 无限）
+  - `auto_start`：是否自动启动
+- **server.name**：服务器名称，对应 Header `x-self-name`
+- **security.access_token**：访问令牌
 
 ## 3. 命令系统
 
 | 命令                     | 权限等级 | 说明                    |
 | ------------------------ | -------- | ----------------------- |
 | `!!queqiao help`         | 0        | 显示帮助信息            |
-| `!!queqiao status`       | 1        | 显示WebSocket服务器状态 |
-| `!!queqiao start`        | 3        | 启动WebSocket服务器     |
-| `!!queqiao stop`         | 3        | 停止WebSocket服务器     |
+| `!!queqiao status`       | 1        | 显示 WebSocket 状态     |
+| `!!queqiao start`        | 3        | 启动 WebSocket（按 mode） |
+| `!!queqiao stop`         | 3        | 停止 WebSocket          |
 | `!!queqiao reload`       | 3        | 重新加载配置            |
 | `!!queqiao debug on/off` | 3        | 切换调试模式            |
 
