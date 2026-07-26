@@ -236,22 +236,39 @@ class EventHandler:
         return parts[0] if len(parts) > 1 else None
     
     def broadcast_event(self, event_data: Dict[str, Any]):
-        """广播事件"""
+        """广播事件（支持 server / client 两种模式）"""
         def async_runner():
             try:
-                from queqiao_mcdr import get_websocket_server
-                ws_server = get_websocket_server()
-                if ws_server and ws_server.is_running():
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                from queqiao_mcdr import get_websocket_endpoint, loop as ws_loop
+
+                endpoint = get_websocket_endpoint()
+                if endpoint is None:
+                    return
+
+                # 优先投递到 WebSocket 线程的事件循环，避免跨 loop 问题
+                if ws_loop is not None and not ws_loop.is_closed() and ws_loop.is_running():
                     try:
-                        loop.run_until_complete(ws_server.broadcast_event(event_data))
-                    finally:
-                        loop.close()
-            except:
+                        asyncio.run_coroutine_threadsafe(
+                            endpoint.broadcast_event(event_data), ws_loop
+                        )
+                        return
+                    except Exception:
+                        pass
+
+                # 回退：独立临时 loop（兼容旧行为）
+                if hasattr(endpoint, "is_running") and not endpoint.is_running():
+                    if not getattr(endpoint, "is_connected", lambda: False)():
+                        return
+                tmp_loop = asyncio.new_event_loop()
+                try:
+                    tmp_loop.run_until_complete(endpoint.broadcast_event(event_data))
+                finally:
+                    tmp_loop.close()
+            except Exception:
                 pass
-        
+
         import threading
+
         threading.Thread(target=async_runner, daemon=True).start()
     
     def _send_event_with_location(self, event_data: Dict[str, Any], player_name: str):
