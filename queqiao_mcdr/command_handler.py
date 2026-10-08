@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from mcdreforged.api.all import *
 
 from queqiao_mcdr.config import Config
+from queqiao_mcdr.websocket_client import safe_websocket_target
 
 class CommandHandler:
     """命令处理器类"""
@@ -85,72 +86,26 @@ class CommandHandler:
         )
     
     def on_command_start(self, source: CommandSource):
-        """
-        处理start命令
-        
-        Args:
-            source: 命令源
-        """
-        from queqiao_mcdr import (
-            start_websocket,
-            websocket_server,
-            websocket_client,
-            config,
-        )
-
-        mode = config.mode if config else "server"
-        if mode == "client":
-            if websocket_client is not None and websocket_client.is_running():
-                source.reply("WebSocket 客户端已经在运行中")
-                return
-            start_websocket(self.server)
-            source.reply(f"WebSocket 客户端已启动 (mode=client, url={config.websocket_url})")
+        from queqiao_mcdr import start_websocket
+        if start_websocket(self.server):
+            source.reply("WebSocket 运行循环已启动；连接状态请查看 status")
         else:
-            if websocket_server is not None and websocket_server.is_running():
-                source.reply("WebSocket 服务器已经在运行中")
-                return
-            start_websocket(self.server)
-            source.reply("WebSocket 服务器已启动")
+            source.reply("WebSocket 启动失败，请检查日志与当前端点状态")
 
     def on_command_stop(self, source: CommandSource):
-        """
-        处理stop命令
-        
-        Args:
-            source: 命令源
-        """
-        from queqiao_mcdr import (
-            stop_websocket,
-            websocket_server,
-            websocket_client,
-        )
-
-        running = False
-        if websocket_server is not None and websocket_server.is_running():
-            running = True
-        if websocket_client is not None and websocket_client.is_running():
-            running = True
-
-        if not running:
-            source.reply("WebSocket 未在运行")
-            return
-
-        stop_websocket(self.server)
-        source.reply("WebSocket 已停止")
-    
-    def on_command_reload(self, source: CommandSource):
-        """
-        处理reload命令
-        
-        Args:
-            source: 命令源
-        """
-        # 重新加载配置
-        if self.config.reload_config():
-            source.reply('配置已重新加载')
+        from queqiao_mcdr import stop_websocket
+        if stop_websocket(self.server):
+            source.reply("WebSocket 已停止")
         else:
-            source.reply('重新加载配置失败，请检查日志')
-    
+            source.reply("WebSocket 尚未完全停止；保留原资源所有权，请检查日志")
+
+    def on_command_reload(self, source: CommandSource):
+        from queqiao_mcdr import reload_configuration
+        if reload_configuration(self.server):
+            source.reply("配置已校验并重新加载；原运行端点已按需重建")
+        else:
+            source.reply("配置重载未完成，请检查日志和当前运行状态")
+
     def on_command_status(self, source: CommandSource):
         """
         处理status命令
@@ -172,7 +127,7 @@ class CommandHandler:
             )
             source.reply(f"WebSocket 客户端状态: {'运行中' if is_running else '已停止'}")
             source.reply(f"连接状态: {'已连接' if is_connected else '未连接'}")
-            source.reply(f"目标地址: {self.config.websocket_url}")
+            source.reply(f"目标地址: {safe_websocket_target(self.config.websocket_url)}")
             source.reply(f"server_name: {self.config.server_name}")
         else:
             is_running = (

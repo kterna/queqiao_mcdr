@@ -1,179 +1,142 @@
-"""
-配置管理模块
-
-负责加载、保存和管理插件配置
-"""
-
-import os
+"""Validated configuration with atomic persistence and retained last-known-good state."""
+import copy
 import json
-from typing import Dict, Any, List, Optional
+import os
+from pathlib import Path
+import tempfile
+from urllib.parse import urlsplit
 
-from mcdreforged.api.all import *
+from queqiao_mcdr.reconnect_backoff import ReconnectBackoff, finite_number
 
 
 class Config:
-    """配置管理类"""
-
     DEFAULT_CONFIG = {
-        # 连接模式:
-        # - server: 正向，MCDR 开 WS Server，对接端主动连入（默认，兼容旧配置）
-        # - client: 反向，MCDR 作为 Client 主动连对接端（租赁服推荐）
         "mode": "server",
         "websocket": {
-            "host": "0.0.0.0",
-            "port": 8080,
-            "path": "/minecraft/ws",
-            "auto_start": True,
-            # client 模式配置
-            "url": "ws://127.0.0.1:8080/minecraft/ws",
-            "reconnect_interval": 5,
-            "reconnect_max_times": 0,  # 0 = 无限重连
+            "host": "0.0.0.0", "port": 8080, "path": "/minecraft/ws",
+            "auto_start": True, "url": "ws://127.0.0.1:8080/minecraft/ws",
+            "reconnect_interval": 5, "reconnect_max_times": 0,
+            "reconnect_max_delay": 60, "reconnect_multiplier": 2,
+            "reconnect_jitter_ratio": 0.1, "reconnect_reset_after": 30,
         },
-        "server": {
-            "name": "MCDR Server",
-            "type": "mcdr",
-        },
-        "security": {
-            "access_token": "",
-        },
+        "server": {"name": "MCDR Server", "type": "mcdr"},
+        "security": {"access_token": ""},
     }
 
-    def __init__(self, server: PluginServerInterface):
-        """
-        初始化配置管理器
-
-        Args:
-            server: MCDR服务器接口
-        """
-        self.server = server
-        self.logger = server.logger
+    def __init__(self, server):
+        self.server, self.logger = server, server.logger
         self.config_path = os.path.join(server.get_data_folder(), "config.json")
-        self.config = json.loads(json.dumps(self.DEFAULT_CONFIG))  # deep copy
+        self.config = copy.deepcopy(self.DEFAULT_CONFIG)
+        self._apply_config()
 
-        # 配置属性
-        self.mode = "server"
-        self.websocket_host = "0.0.0.0"
-        self.websocket_port = 8080
-        self.websocket_path = "/minecraft/ws"
-        self.auto_start = True
-        self.websocket_url = "ws://127.0.0.1:8080/minecraft/ws"
-        self.reconnect_interval = 5
-        self.reconnect_max_times = 0
+    @staticmethod
+    def _text(value, name, maximum=1000, empty=False):
+        if not isinstance(value, str) or (not empty and not value.strip()) or len(value) > maximum or "\x00" in value:
+            raise ValueError(f"{name} must be a bounded string")
+        return value
 
-        self.server_name = "MCDR Server"
-        self.server_type = "mcdr"
+    @classmethod
+    def _validated(cls, candidate):
+        if not isinstance(candidate, dict) or candidate.get("mode") not in {"server", "client"}:
+            raise ValueError("mode must be server or client")
+        for section in ("websocket", "server", "security"):
+            if not isinstance(candidate.get(section), dict):
+                raise ValueError(f"{section} must be an object")
+        ws, game, security = candidate["websocket"], candidate["server"], candidate["security"]
+        host = cls._text(ws.get("host"), "host", 253)
+        port = ws.get("port")
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError("port must be an integer from 1 to 65535")
+        path = cls._text(ws.get("path"), "path")
+        if not path.startswith("/") or "?" in path or "#" in path:
+            raise ValueError("path must be an absolute URL path without query or fragment")
+        auto_start = ws.get("auto_start")
+        if type(auto_start) is not bool:
+            raise ValueError("auto_start must be a boolean")
+        url = cls._text(ws.get("url"), "url", 4096)
+        parsed = urlsplit(url)
+        if parsed.scheme not in {"ws", "wss"} or not parsed.hostname or parsed.fragment:
+            raise ValueError("url must be a ws/wss endpoint without fragment")
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            raise ValueError("url has an invalid port")
+        attempts = ws.get("reconnect_max_times")
+        if type(attempts) is not int or not 0 <= attempts <= 1000000:
+            raise ValueError("reconnect_max_times must be an integer from 0 to 1000000")
+        policy = ReconnectBackoff(
+            ws.get("reconnect_interval"), ws.get("reconnect_max_delay"),
+            ws.get("reconnect_multiplier"), ws.get("reconnect_jitter_ratio"),
+        )
+        return {
+            "mode": candidate["mode"], "websocket_host": host, "websocket_port": port,
+            "websocket_path": path, "auto_start": auto_start, "websocket_url": url,
+            "reconnect_interval": policy.initial_delay, "reconnect_max_times": attempts,
+            "reconnect_max_delay": policy.max_delay, "reconnect_multiplier": policy.multiplier,
+            "reconnect_jitter_ratio": policy.jitter_ratio,
+            "reconnect_reset_after": finite_number(ws.get("reconnect_reset_after"), "reconnect_reset_after", 0, 3600),
+            "server_name": cls._text(game.get("name"), "server name", 200),
+            "server_type": cls._text(game.get("type"), "server type", 100),
+            "access_token": cls._text(security.get("access_token"), "access token", 8192, empty=True),
+        }
 
-        self.access_token = ""
+    def load_candidate(self):
+        """Parse and validate a complete prospective configuration without changing runtime state."""
+        candidate = copy.deepcopy(self.DEFAULT_CONFIG)
+        path = Path(self.config_path)
+        if path.exists():
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                raise ValueError("configuration must be an object")
+            self._update_dict(candidate, loaded)
+        self._validated(candidate)
+        return candidate
 
-    def load_config(self) -> bool:
-        """
-        加载配置文件
+    def install(self, candidate, *, persist=True):
+        """Persist before publishing the validated attribute set; invalid input changes nothing."""
+        candidate = copy.deepcopy(candidate)
+        attributes = self._validated(candidate)
+        if persist:
+            path = Path(self.config_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temporary = tempfile.mkstemp(prefix=".queqiao-", suffix=".json", dir=path.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    json.dump(candidate, stream, ensure_ascii=False, indent=4, allow_nan=False)
+                    stream.write("\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
+        self.config = candidate
+        self.__dict__.update(attributes)
 
-        Returns:
-            bool: 是否成功加载配置
-        """
-        if not os.path.exists(self.config_path):
-            self.logger.info("配置文件不存在，创建默认配置")
-            self.save_config()
-            self._apply_config()
-            return True
-
+    def load_config(self):
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                loaded_config = json.load(f)
-
-            # 更新配置，保留默认值
-            self._update_dict(self.config, loaded_config)
-            self._apply_config()
-
-            # 回写以补全新字段
-            self.save_config()
-
-            self.logger.info("配置文件加载成功")
+            self.install(self.load_candidate())
+            self.logger.info("QueQiao configuration validated and loaded")
             return True
-        except Exception as e:
-            self.logger.error(f"加载配置文件失败: {e}")
-            self.logger.error("使用默认配置")
-            self._apply_config()
+        except (OSError, ValueError, TypeError) as exc:
+            self.logger.error(f"QueQiao configuration rejected; previous state retained ({type(exc).__name__})")
             return False
 
-    def save_config(self) -> bool:
-        """
-        保存配置文件
-
-        Returns:
-            bool: 是否成功保存配置
-        """
-        try:
-            # 确保数据文件夹存在
-            data_folder = self.server.get_data_folder()
-            if not os.path.exists(data_folder):
-                os.makedirs(data_folder)
-
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
-
-            self.logger.info("配置文件保存成功")
-            return True
-        except Exception as e:
-            self.logger.error(f"保存配置文件失败: {e}")
-            return False
-
-    def reload_config(self) -> bool:
-        """
-        重新加载配置文件
-
-        Returns:
-            bool: 是否成功重新加载配置
-        """
+    def reload_config(self):
         return self.load_config()
 
+    def save_config(self):
+        try:
+            self.install(self.config)
+            return True
+        except (OSError, ValueError, TypeError) as exc:
+            self.logger.error(f"QueQiao configuration save failed ({type(exc).__name__})")
+            return False
+
     def _apply_config(self):
-        """应用配置到属性"""
-        mode = str(self.config.get("mode", "server")).strip().lower()
-        if mode not in ("server", "client"):
-            mode = "server"
-        self.mode = mode
+        self.__dict__.update(self._validated(self.config))
 
-        # WebSocket配置
-        websocket_config = self.config.get("websocket", {})
-        self.websocket_host = websocket_config.get("host", "0.0.0.0")
-        self.websocket_port = websocket_config.get("port", 8080)
-        self.websocket_path = websocket_config.get("path", "/minecraft/ws")
-        self.auto_start = websocket_config.get("auto_start", True)
-        self.websocket_url = websocket_config.get(
-            "url", "ws://127.0.0.1:8080/minecraft/ws"
-        )
-        self.reconnect_interval = int(
-            websocket_config.get("reconnect_interval", 5) or 5
-        )
-        self.reconnect_max_times = int(
-            websocket_config.get("reconnect_max_times", 0) or 0
-        )
-
-        # 服务器配置
-        server_config = self.config.get("server", {})
-        self.server_name = server_config.get("name", "MCDR Server")
-        self.server_type = server_config.get("type", "mcdr")
-
-        # 安全配置
-        security_config = self.config.get("security", {})
-        self.access_token = security_config.get("access_token", "")
-
-    def _update_dict(self, target: Dict[str, Any], source: Dict[str, Any]):
-        """
-        递归更新字典，保留默认值
-
-        Args:
-            target: 目标字典
-            source: 源字典
-        """
+    def _update_dict(self, target, source):
         for key, value in source.items():
-            if key in target:
-                if isinstance(value, dict) and isinstance(target[key], dict):
-                    self._update_dict(target[key], value)
-                else:
-                    target[key] = value
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                self._update_dict(target[key], value)
             else:
-                # 允许用户额外字段
                 target[key] = value

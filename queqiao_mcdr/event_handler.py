@@ -6,6 +6,7 @@
 
 import json
 import threading
+import time
 from typing import Dict, Any, Optional, List
 import asyncio
 
@@ -31,6 +32,9 @@ class EventHandler:
         self.logger = server.logger
         self.config = config
         self.api_handler = api_handler
+        self._closed = threading.Event()
+        self._workers_lock = threading.Lock()
+        self._workers = set()
     
     def register_events(self):
         """注册MCDR事件监听器"""
@@ -235,79 +239,87 @@ class EventHandler:
         parts = message.split(' ')
         return parts[0] if len(parts) > 1 else None
     
-    def broadcast_event(self, event_data: Dict[str, Any]):
-        """广播事件（支持 server / client 两种模式）"""
-        def async_runner():
-            try:
-                from queqiao_mcdr import get_websocket_endpoint, loop as ws_loop
-
-                endpoint = get_websocket_endpoint()
-                if endpoint is None:
-                    return
-
-                # 优先投递到 WebSocket 线程的事件循环，避免跨 loop 问题
-                if ws_loop is not None and not ws_loop.is_closed() and ws_loop.is_running():
-                    try:
-                        asyncio.run_coroutine_threadsafe(
-                            endpoint.broadcast_event(event_data), ws_loop
-                        )
-                        return
-                    except Exception:
-                        pass
-
-                # 回退：独立临时 loop（兼容旧行为）
-                if hasattr(endpoint, "is_running") and not endpoint.is_running():
-                    if not getattr(endpoint, "is_connected", lambda: False)():
-                        return
-                tmp_loop = asyncio.new_event_loop()
+    def _dispatch_event(self, event_data, runtime):
+        if self._closed.is_set() or runtime is None:
+            return None
+        future = runtime.submit_event(event_data)
+        if future is not None:
+            def completed(result):
                 try:
-                    tmp_loop.run_until_complete(endpoint.broadcast_event(event_data))
-                finally:
-                    tmp_loop.close()
-            except Exception:
-                pass
+                    if result.result() is False:
+                        self.logger.debug("Event was not sent because the endpoint is disconnected")
+                except Exception as exc:
+                    self.logger.warning(f"Event submission failed: {type(exc).__name__}")
+            future.add_done_callback(completed)
+        return future
 
-        import threading
+    def broadcast_event(self, event_data: Dict[str, Any]):
+        """Use one captured generation; never create a temporary foreign loop."""
+        from queqiao_mcdr import get_websocket_runtime
+        return self._dispatch_event(event_data, get_websocket_runtime())
 
-        threading.Thread(target=async_runner, daemon=True).start()
-    
     def _send_event_with_location(self, event_data: Dict[str, Any], player_name: str):
-        """发送包含位置信息的完整事件"""
-        def send_complete_event():
+        """Bound optional enrichment workers and pin their destination generation."""
+        from queqiao_mcdr import get_websocket_runtime
+        runtime = get_websocket_runtime()
+        if self._closed.is_set() or runtime is None:
+            return
+
+        def enrich():
             try:
-                minecraft_data_api = self.server.get_plugin_instance('minecraft_data_api')
+                minecraft_data_api = self.server.get_plugin_instance("minecraft_data_api")
                 if minecraft_data_api:
-                    # 获取维度
                     try:
                         dimension = minecraft_data_api.get_player_dimension(player_name, timeout=1.5)
                         if dimension is not None:
-                            event_data['player']['dimension'] = dimension
-                    except Exception as e:
-                        self.logger.error(f'获取玩家 {player_name} 维度信息失败: {e}')
-                    
-                    # 获取坐标
-                    try:
-                        coordinate = minecraft_data_api.get_player_coordinate(player_name, timeout=1.5)
-                        if coordinate:
-                            event_data['player']['coordinate'] = ResponseBuilder.coordinate_data(
-                                x=getattr(coordinate, 'x', None),
-                                y=getattr(coordinate, 'y', None),
-                                z=getattr(coordinate, 'z', None)
-                            )
-                    except Exception as e:
-                        self.logger.error(f'获取玩家 {player_name} 坐标信息失败: {e}')
-                else:
-                    self.logger.warning('minecraft_data_api 插件实例获取失败')
-                
-                self.broadcast_event(event_data)
-            except Exception as e:
-                self.logger.error(f'发送事件时出错: {e}')
-                import traceback
-                self.logger.error(traceback.format_exc())
-                self.broadcast_event(event_data)
-        
-        # 在新线程中异步执行
-        import threading
-        threading.Thread(target=send_complete_event, daemon=True).start()
+                            event_data["player"]["dimension"] = dimension
+                    except Exception as exc:
+                        self.logger.debug(f"Optional player dimension unavailable: {type(exc).__name__}")
+                    if not self._closed.is_set():
+                        try:
+                            coordinate = minecraft_data_api.get_player_coordinate(player_name, timeout=1.5)
+                            if coordinate:
+                                event_data["player"]["coordinate"] = ResponseBuilder.coordinate_data(
+                                    x=getattr(coordinate, "x", None), y=getattr(coordinate, "y", None),
+                                    z=getattr(coordinate, "z", None),
+                                )
+                        except Exception as exc:
+                            self.logger.debug(f"Optional player coordinates unavailable: {type(exc).__name__}")
+                self._dispatch_event(event_data, runtime)
+            except Exception as exc:
+                self.logger.warning(f"Event enrichment failed: {type(exc).__name__}")
+                self._dispatch_event(event_data, runtime)
+            finally:
+                with self._workers_lock:
+                    self._workers.discard(threading.current_thread())
 
+        with self._workers_lock:
+            if self._closed.is_set():
+                return
+            if len(self._workers) >= 2:
+                # Preserve the event without optional metadata instead of making
+                # an unbounded queue or a new thread for every chat message.
+                self._dispatch_event(event_data, runtime)
+                return
+            worker = threading.Thread(target=enrich, daemon=True, name="QueQiao-location")
+            self._workers.add(worker)
+            try:
+                worker.start()
+            except Exception:
+                self._workers.discard(worker)
+                raise
 
+    def close(self, timeout=3.5):
+        """Stop accepting work and join owned enrichment workers within their API budget."""
+        self._closed.set()
+        deadline = time.monotonic() + timeout
+        with self._workers_lock:
+            workers = list(self._workers)
+        for worker in workers:
+            if worker is not threading.current_thread():
+                worker.join(max(0.0, deadline - time.monotonic()))
+        with self._workers_lock:
+            alive = any(worker.is_alive() for worker in self._workers)
+        if alive:
+            self.logger.error("Event enrichment shutdown is incomplete; worker ownership retained")
+        return not alive

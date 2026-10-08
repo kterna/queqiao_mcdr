@@ -6,6 +6,8 @@ API处理模块
 
 import json
 import asyncio
+from collections import deque
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Callable, Coroutine, List
 
 from mcdreforged.api.all import *
@@ -13,6 +15,7 @@ from mcdreforged.api.all import *
 from queqiao_mcdr.config import Config
 from queqiao_mcdr.message_formatter import MessageFormatter
 from queqiao_mcdr.response_builder import ResponseBuilder
+from queqiao_mcdr.command_payload import component_json, timing
 
 class ApiHandler:
     """API处理器类"""
@@ -28,6 +31,7 @@ class ApiHandler:
         self.server = server
         self.logger = server.logger
         self.config = config
+        self.command_audit = deque(maxlen=100)
         
         # API方法映射
         self.api_methods = {
@@ -71,8 +75,10 @@ class ApiHandler:
 
     async def handle_api_request(self, api_name: str, api_data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
         """处理API请求"""
-        if api_name not in self.api_methods:
-            return self._error_response(f'Unknown API: {api_name}', echo)
+        if not isinstance(api_name, str) or api_name not in self.api_methods:
+            return self._error_response('Unknown API', echo)
+        if not isinstance(api_data, dict):
+            return self._error_response('API data must be an object', echo)
         
         try:
             method = self.api_methods[api_name]
@@ -118,12 +124,9 @@ class ApiHandler:
         return None
     
     def _format_message_for_command(self, message) -> str:
-        """格式化消息用于命令"""
-        formatted = MessageFormatter.format_message(message)
-        if hasattr(formatted, 'to_json_str'):
-            return formatted.to_json_str()
-        return f'{{"text":"{formatted}"}}'
-    
+        """Validate the supported component subset and encode actual JSON."""
+        return component_json(message)
+
     def _get_player_detail_info(self, player_name: str) -> Dict[str, Any]:
         """获取玩家详细信息"""
         player_data = ResponseBuilder.player_data(nickname=player_name)
@@ -210,47 +213,66 @@ class ApiHandler:
         except Exception as e:
             return self._error_response(f'Failed to send private message: {str(e)}', echo)
     
+    def _submit_generated_commands(self, commands, echo, operation):
+        """Record submissions truthfully; the game server does not acknowledge execution."""
+        submitted = 0
+        try:
+            for command in commands:
+                if not command.startswith("title @a ") or "\n" in command or "\r" in command:
+                    raise ValueError("Invalid generated command boundary")
+                outcome = self.server.execute(command)
+                if outcome is False:
+                    raise RuntimeError("Command submission was rejected")
+                submitted += 1
+        except Exception as exc:
+            self.logger.error(f"Generated {operation} submission failed: {type(exc).__name__}")
+            self.command_audit.append({
+                "operation": operation, "status": "failed", "submitted_commands": submitted,
+                "execution_confirmed": False, "partial_or_unknown": True,
+                "error_type": type(exc).__name__, "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+            response = self._error_response(f"Failed to submit {operation} commands", echo)
+            response["data"] = {"submitted_commands": submitted, "execution_confirmed": False, "partial_or_unknown": True}
+            return response
+        self.command_audit.append({
+            "operation": operation, "status": "submitted", "submitted_commands": submitted,
+            "execution_confirmed": False, "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return self._success_response(
+            f"{operation.capitalize()} commands submitted", echo,
+            {"submitted_commands": submitted, "execution_confirmed": False},
+        )
+
     async def send_title(self, data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
-        """发送标题"""
-        title = data.get('title')
-        if not title:
-            return self._error_response('Missing title parameter', echo)
-        
+        """Validate the complete request before the first generated command is submitted."""
+        if not isinstance(data, dict) or not data.get("title"):
+            return self._error_response("Missing title parameter", echo)
         try:
-            subtitle = data.get('subtitle', '')
-            fadein = data.get('fadein', 10)
-            stay = data.get('stay', 70)
-            fadeout = data.get('fadeout', 20)
-            
-            # 设置标题时间
-            self.server.execute(f'title @a times {fadein} {stay} {fadeout}')
-            
-            # 发送标题
-            title_cmd = f'title @a title {self._format_message_for_command(title)}'
-            self.server.execute(title_cmd)
-            
-            # 发送副标题（如果有）
-            if subtitle:
-                subtitle_cmd = f'title @a subtitle {self._format_message_for_command(subtitle)}'
-                self.server.execute(subtitle_cmd)
-            
-            return self._success_response('Title displayed', echo)
-        except Exception as e:
-            return self._error_response(f'Failed to display title: {str(e)}', echo)
-    
+            fadein = timing(data.get("fadein", 10), "fadein")
+            stay = timing(data.get("stay", 70), "stay")
+            fadeout = timing(data.get("fadeout", 20), "fadeout")
+            title = self._format_message_for_command(data["title"])
+            subtitle = data.get("subtitle", "")
+            subtitle_json = self._format_message_for_command(subtitle) if subtitle != "" else None
+            commands = [
+                f"title @a times {fadein} {stay} {fadeout}",
+                f"title @a title {title}",
+            ]
+            if subtitle_json is not None:
+                commands.append(f"title @a subtitle {subtitle_json}")
+        except (ValueError, TypeError):
+            return self._error_response("Invalid title timing or message component", echo)
+        return self._submit_generated_commands(commands, echo, "title")
+
     async def send_actionbar(self, data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
-        """发送动作栏消息"""
-        message = data.get('message')
-        if not message:
-            return self._error_response('Missing message parameter', echo)
-        
+        if not isinstance(data, dict) or not data.get("message"):
+            return self._error_response("Missing message parameter", echo)
         try:
-            actionbar_cmd = f'title @a actionbar {self._format_message_for_command(message)}'
-            self.server.execute(actionbar_cmd)
-            return self._success_response('Actionbar message displayed', echo)
-        except Exception as e:
-            return self._error_response(f'Failed to display actionbar message: {str(e)}', echo)
-    
+            message = self._format_message_for_command(data["message"])
+        except (ValueError, TypeError):
+            return self._error_response("Invalid actionbar message component", echo)
+        return self._submit_generated_commands([f"title @a actionbar {message}"], echo, "actionbar")
+
     async def get_player_list(self, data: Dict[str, Any], echo: Optional[str] = None) -> Dict[str, Any]:
         """获取在线玩家列表"""
         try:
