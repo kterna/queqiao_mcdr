@@ -118,6 +118,28 @@ def test_valid_reload_replaces_one_generation_and_closes_previous_loop(isolated_
     assert cfg.reconnect_interval == 10
 
 
+def test_reload_publishes_candidate_after_replacement_starts(isolated_plugin, monkeypatch):
+    server, cfg, _ = isolated_plugin
+    assert plugin.start_websocket(server)
+    previous = copy.deepcopy(cfg.config)
+    candidate = copy.deepcopy(previous)
+    candidate["websocket"]["reconnect_interval"] = 11
+    monkeypatch.setattr(cfg, "load_candidate", lambda: copy.deepcopy(candidate))
+    observed_durable_states = []
+
+    def start_replacement(_server):
+        with open(cfg.config_path, "r", encoding="utf-8") as stream:
+            observed_durable_states.append(json.load(stream))
+        return True
+
+    monkeypatch.setattr(plugin, "start_websocket", start_replacement)
+    assert plugin.reload_configuration(server)
+    assert observed_durable_states == [previous]
+    assert cfg.config == candidate
+    with open(cfg.config_path, "r", encoding="utf-8") as stream:
+        assert json.load(stream) == candidate
+
+
 def test_failed_replacement_rolls_back_to_previous_client_configuration(isolated_plugin):
     server, cfg, _ = isolated_plugin
     assert plugin.start_websocket(server)

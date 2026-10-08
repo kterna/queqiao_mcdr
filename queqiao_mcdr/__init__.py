@@ -170,9 +170,15 @@ def reload_configuration(server):
         if was_running and not stop_websocket(server):
             return False
         try:
-            config.install(candidate)
+            # Publish the validated candidate in memory first so the new
+            # generation can be started without changing the durable file.
+            # The file is committed only after that generation owns a live
+            # endpoint. This keeps a failed handover from exposing a state no
+            # running generation can serve.
+            config.install(candidate, persist=False)
             if was_running and not start_websocket(server):
                 raise RuntimeError("Replacement endpoint did not start")
+            config.persist(candidate)
             return True
         except Exception as exc:
             server.logger.error(f"Reload failed: {type(exc).__name__}")

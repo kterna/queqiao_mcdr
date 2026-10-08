@@ -95,21 +95,32 @@ class Config:
         candidate = copy.deepcopy(candidate)
         attributes = self._validated(candidate)
         if persist:
-            path = Path(self.config_path)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            fd, temporary = tempfile.mkstemp(prefix=".queqiao-", suffix=".json", dir=path.parent)
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                    json.dump(candidate, stream, ensure_ascii=False, indent=4, allow_nan=False)
-                    stream.write("\n")
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(temporary, path)
-            finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
+            self.persist(candidate)
         self.config = candidate
         self.__dict__.update(attributes)
+
+    def persist(self, candidate=None):
+        """Atomically persist a validated candidate without publishing it in memory.
+
+        Reload transactions use this after the replacement endpoint has started.
+        Keeping persistence separate from publication prevents a failed endpoint
+        handover from exposing a configuration that no live generation owns.
+        """
+        candidate = copy.deepcopy(self.config if candidate is None else candidate)
+        self._validated(candidate)
+        path = Path(self.config_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(prefix=".queqiao-", suffix=".json", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(candidate, stream, ensure_ascii=False, indent=4, allow_nan=False)
+                stream.write("\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
 
     def load_config(self):
         try:
